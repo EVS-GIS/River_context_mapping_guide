@@ -1,0 +1,183 @@
+// ======================================================
+// 1. DÉFINITION DES DONNÉES ET FILTRES (HAUT-RHÔNE) - DATA AND FILTER DEFINITIONS (UPPER RHÔNE)
+// ======================================================
+var hybas6 = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_6");
+var hautRhone = hybas6.filter(ee.Filter.eq('HYBAS_ID', 2060552470));
+Map.centerObject(hautRhone, 8);
+
+var style = require('users/gena/packages:style');
+style.SetMapStyleGrey();
+
+// ======================================================
+// 2. PRÉPARATION DES SOURCES DE DONNÉES (COUCHES)-2. PREPARATION OF DATA SOURCES (LAYERS)
+// ======================================================
+
+// [1] Relief (SRTM)
+var srtm = ee.Image("USGS/SRTMGL1_003").clip(hautRhone);
+
+// [2] Hydrologie
+var rivers = ee.FeatureCollection("WWF/HydroSHEDS/v1/FreeFlowingRivers").filterBounds(hautRhone);
+var lakes = ee.FeatureCollection("projects/sat-io/open-datasets/HydroLakes/lake_poly_v10").filterBounds(hautRhone);
+
+// [3] Données Climatiques (WorldClim - Précipitations annuelles)
+var worldClim = ee.Image("WORLDCLIM/V1/BIO").select('bio12').clip(hautRhone);
+
+// [4] Occupation du Sol (ESA WorldCover)
+var c3s = ee.ImageCollection("ESA/WorldCover/v100")
+  .first()
+  .select('Map')
+  .clip(hautRhone);
+
+// [5] Population (WorldPop)
+var pop = ee.ImageCollection("WorldPop/GP/100m/pop")
+  .filterDate('2020-01-01', '2020-12-31').mean().clip(hautRhone);
+
+// [6] Imperméabilisation (GISA)
+var gisa = ee.Image('projects/sat-io/open-datasets/GISA_1972_2021').clip(hautRhone);
+
+// [7] Barrages
+var dams = ee.FeatureCollection("projects/sat-io/open-datasets/GDW/GDW_BARRIERS_V1_0").filterBounds(hautRhone);
+
+// [8] Sentinel-2 (Bandes B11, B8, B3)
+var s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+  .filterDate('2025-07-01', '2025-07-31')
+  .filterBounds(hautRhone)
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10));
+var s2Median = s2.median().clip(hautRhone);
+
+// ======================================================
+// 3. EXPORT DES RASTERS BRUTS (GeoTIFF)- 3. EXPORT OF RAW RASTERS (GeoTIFF)
+// ======================================================
+var exportRegion = hautRhone.geometry();
+var exportFolder = 'GEE_exports_HautRhone_Brut';
+
+// --- [1] Relief (SRTM) ---
+Export.image.toDrive({
+  image: srtm, // Pas de .visualize() pour garder les valeurs brutes
+  description: 'Raster_1_Relief_SRTM_Brut',
+  folder: exportFolder,
+  region: exportRegion,
+  scale: 30,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+// --- [2] WorldClim (Précipitations annuelles) ---
+Export.image.toDrive({
+  image: worldClim, // Pas de .visualize()
+  description: 'Raster_2_WorldClim_Precipitation_Brut',
+  folder: exportFolder,
+  region: exportRegion,
+  scale: 1000,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+// --- [3] ESA WorldCover (Occupation du sol) ---
+Export.image.toDrive({
+  image: c3s, // Pas de .visualize()
+  description: 'Raster_3_ESA_WorldCover_LandCover_Brut',
+  folder: exportFolder,
+  region: exportRegion,
+  scale: 10,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+// --- [4] Population (WorldPop) ---
+Export.image.toDrive({
+  image: pop, // Pas de .visualize()
+  description: 'Raster_4_Population_WorldPop_Brut',
+  folder: exportFolder,
+  region: exportRegion,
+  scale: 100,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+// --- [5] Imperméabilisation (GISA) ---
+Export.image.toDrive({
+  image: gisa.mask(gisa.gt(0)), // Masquage des valeurs nulles, mais pas de .visualize()
+  description: 'Raster_5_Impervious_GISA_Brut',
+  folder: exportFolder,
+  region: exportRegion,
+  scale: 30,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+// --- [6] Sentinel-2 (Bandes B11, B8, B3) ---
+// Pour Sentinel-2, on exporte chaque bande séparément pour éviter les problèmes de composition RGB dans QGIS.
+// Alternative : Exporter en multibande (B11, B8, B3) pour une composition RGB dans QGIS.
+Export.image.toDrive({
+  image: s2Median.select(['B11', 'B8', 'B3']), // Sélection des bandes pour une composition RGB
+  description: 'Raster_6_Sentinel2_July2025_Brut',
+  folder: exportFolder,
+  region: exportRegion,
+  scale: 10,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+// ======================================================
+// 4. EXPORT DES VECTEURS (SHP)- 4. EXPORTING VECTORS (SHP)
+// ======================================================
+Export.table.toDrive({
+  collection: rivers,
+  description: 'Vector_1_Rivers_HydroSHEDS',
+  folder: exportFolder,
+  fileFormat: 'SHP'
+});
+
+Export.table.toDrive({
+  collection: lakes,
+  description: 'Vector_2_Lakes_HydroLakes',
+  folder: exportFolder,
+  fileFormat: 'SHP'
+});
+
+Export.table.toDrive({
+  collection: dams,
+  description: 'Vector_3_Dams_GDW',
+  folder: exportFolder,
+  fileFormat: 'SHP'
+});
+
+Export.table.toDrive({
+  collection: hautRhone,
+  description: 'Vector_4_Contours_HautRhone',
+  folder: exportFolder,
+  fileFormat: 'SHP'
+});
+
+// ======================================================
+// 5. AFFICHAGE DES COUCHES (Optionnel, pour vérification)- 5. LAYER DISPLAY (Optional, for verification)
+// ======================================================
+Map.addLayer(srtm, {min: 0, max: 2500}, "1. Relief (SRTM DEM - Brut)");
+Map.addLayer(lakes, {color: 'cyan'}, "2. HydroLakes");
+Map.addLayer(rivers, {color: 'blue'}, "3. Rivers");
+Map.addLayer(worldClim, {min: 600, max: 2000}, "4. WorldClim Annual Precip (mm - Brut)");
+Map.addLayer(c3s, {min: 10, max: 100}, "5. ESA WorldCover Land Cover (Brut)");
+Map.addLayer(pop, {min: 0, max: 200}, "6. Population (WorldPop - Brut)");
+Map.addLayer(gisa.mask(gisa.gt(0)), {min: 1, max: 39}, "7. GISA 1972-2021 (Brut)");
+Map.addLayer(dams, {color: 'black'}, "8. World Dams");
+Map.addLayer(s2Median.select(['B11', 'B8', 'B3']), {min: 0, max: 4000}, "9. Sentinel-2 (Brut)");
+Map.addLayer(hautRhone, {color: 'red'}, "10. Contours Haut-Rhône");
