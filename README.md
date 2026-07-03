@@ -1,2 +1,3 @@
-# River_context_mapping_guide
-A setting data contexte viewing into Google Earth Engine and using into Qgis 
+# River context mapping guide :
+
+The purpose of this repository is to provide a workflow for creating a cartographic atlas for any large river basin in the world. The aim of this atlas is to present contextual geographic information when evaluating the overall health of the river socio-ecosystem. To be applicable to any large river basin, this approach required a consistent structure and set of information for each relevant watershed. Therefore, this repository includes a guide and Google Earth Engine scripts for accessing and clipping key data layers of the natural characteristics and anthropogenic pressures within the river basin boundaries. The scripts also export these layers for subsequent cartography in QGIS.
